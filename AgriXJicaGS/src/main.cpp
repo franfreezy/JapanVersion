@@ -1,18 +1,26 @@
 #include <Arduino.h>
+#include <SoftwareSerial.h>
 
-// put function declarations here:
-int myFunction(int, int);
+#define RX2 17
+#define TX2 16
 
-void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+SoftwareSerial loraSerial(RX2, TX2);
+
+void setup()
+{
+  Serial.begin(115200);
+  loraSerial.begin(9600);
+  Serial.println("LoRa Receiver Ready...");
 }
 
-void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+void loop()
+{
+  if (loraSerial.available())
+  {
+    Serial.println("receivedData");
+    String receivedData = loraSerial.readStringUntil('\n');
+    
+    Serial.println(receivedData);
+    loraSerial.flush();
+  }
 }
