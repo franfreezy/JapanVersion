@@ -13,8 +13,8 @@
 #define LORA_CS 5
 #define LORA_RST 4
 #define LORA_DIO0 26
-#define LORA_RX 21
-#define LORA_TX 15
+#define LORA_RX 15
+#define LORA_TX 21
 #define LED1_PIN 25
 #define LED2_PIN 27
 #define I2C_SDA 12
@@ -22,6 +22,7 @@
 #define SIGNAL_PIN 14
 
 const int LORA_PACKET_SIZE = 240;
+const int I2C_ADDRESS = 8;
 SoftwareSerial LoRaSerial(LORA_RX, LORA_TX);
 QueueHandle_t sensorQueue;
 volatile bool imageTransmissionInProgress = false;
@@ -49,7 +50,6 @@ void commandTask(void *pvParameters) {
   int index = 0;
 
   LoRaSerial.begin(9600);
-  Wire.begin(I2C_SDA, I2C_SCL);
 
   while (true) {
     if (imageTransmissionInProgress) {
@@ -64,7 +64,7 @@ void commandTask(void *pvParameters) {
         command[index] = '\0';
         index = 0;
 
-        Wire.beginTransmission(0x08);
+        Wire.beginTransmission(I2C_ADDRESS);
         Wire.write(command);
         Wire.endTransmission();
         digitalWrite(LED1_PIN, LOW);
@@ -85,35 +85,34 @@ void commandTask(void *pvParameters) {
   }
 }
 
-void receiveEvent(int howMany) {
-  if (imageTransmissionInProgress) {
-    return;
-  }
+void processAndSendData(const String& messageBuffer) {
+  String message = "agrix" + encryptData(messageBuffer);
+  LoRa.beginPacket();
+  LoRa.print(message);
+  LoRa.endPacket();
+  Serial.print("Forwarded telemetry data: ");
+  Serial.println(message);
+}
 
-  char telemetryData[100];
-  int index = 0;
+void handleI2CReceive(int bytesReceived) {
+  static String messageBuffer = "";
+  char c;
 
   while (Wire.available()) {
-    char c = Wire.read();
-    telemetryData[index++] = c;
-    if (c == '\n') {
-      telemetryData[index] = '\0';
-      index = 0;
+    c = Wire.read();
 
-      String message = "agrix" + encryptData(String(telemetryData));
-      LoRa.beginPacket();
-      LoRa.print(message);
-      LoRa.endPacket();
-      Serial.print("Forwarded telemetry data: ");
-      Serial.println(message);
+    if (c != '-' && c != ' ' && c != '\n' && c != '\r' && c != '\t') {
+      messageBuffer += c;
+    }
+
+    if (c == '}') {
+      processAndSendData(messageBuffer);
+      messageBuffer = "";
     }
   }
 }
 
 void telemetryTask(void *pvParameters) {
-  Wire.begin(I2C_SDA, I2C_SCL);
-  Wire.onReceive(receiveEvent);
-
   while (true) {
     if (imageTransmissionInProgress) {
       vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -209,6 +208,9 @@ void imageTransmissionTask(void *pvParameters) {
 
 void setup() {
   Serial.begin(115200);
+  Wire.setPins(I2C_SDA, I2C_SCL);
+  Wire.begin(I2C_ADDRESS);
+  Wire.onReceive(handleI2CReceive);
   while (!Serial);
 
   if (!SD.begin(SD_CS)) {
