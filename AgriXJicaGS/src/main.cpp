@@ -14,21 +14,21 @@
 String processedData, processedLOC, processedImageData;
 
 #define GreenPin 12
-#define BluePin 13
-#define RedPin 14
+#define BluePin 14
+#define RedPin 13
 
 // FreeRTOS Task Handles
 TaskHandle_t fetchTaskHandle;
 TaskHandle_t serialListenTaskHandle;
 
 // Define LoRa SoftwareSerial pins
-#define RX_PIN 21 // Receive pin for LoRa
-#define TX_PIN 15
-SoftwareSerial mySerial(RX_PIN, TX_PIN); // LoRa communication
+#define RX_PIN 15
+#define TX_PIN 21
+SoftwareSerial mySerial(RX_PIN, TX_PIN); 
 
 // Wi-Fi credentials
-const char *ssid = "Nyakanga";
-const char *password = "everydayiambuffering";
+const char *ssid = "KASRI";
+const char *password = "@Freezy#254";
 
 // API endpoints
 const char *telemetryAPI = "https://agroxsat.onrender.com/backendapi/telemetry/";
@@ -62,6 +62,7 @@ void fetchTask(void *parameter) {
                 if (!error) {
                     if (!doc["command"].isNull()) {
                         digitalWrite(RedPin, HIGH);
+                        delay(1000);
                         String command = doc["command"];
                         command.toLowerCase(); // Convert to lowercase for case-insensitive matching
 
@@ -83,12 +84,13 @@ void fetchTask(void *parameter) {
                         } else {
                             Serial.println("Unknown command received: " + command);
                             digitalWrite(RedPin, LOW);
-                            vTaskDelay(pdMS_TO_TICKS(10000)); 
+                            vTaskDelay(pdMS_TO_TICKS(1000)); 
                             continue;
                         }
 
                         Serial.println("Command to send: " + command);
                         mySerial.println(command);
+                        mySerial.flush();
                         digitalWrite(RedPin, LOW);
                         listeningFlag = true;
                     }
@@ -284,7 +286,8 @@ void processImageData(const String& data, String& processedImageData) {
 
 void setup() {
     Serial.begin(115200);
-    
+    mySerial.begin(9600);
+
     SPI.begin(18, 19, 23, LORA_CS);
     LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
 
@@ -292,20 +295,38 @@ void setup() {
     pinMode(BluePin, OUTPUT);
     pinMode(RedPin, OUTPUT);
 
+    
+
+
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
         delay(1000);
-        Serial.println("Connecting to WiFi...");
+        digitalWrite(RedPin, HIGH);
     }
-    Serial.println("Connected to WiFi");
+    digitalWrite(RedPin, LOW);
+    delay(300);
+    digitalWrite(GreenPin, HIGH);
+    delay(300);
+    digitalWrite(GreenPin, LOW);
+    delay(300);    
+    digitalWrite(GreenPin, HIGH);
+    delay(300);
+    digitalWrite(GreenPin, LOW);
+    
 
-    mySerial.begin(9600);
-
-    if (!LoRa.begin(433E6)) {
-        Serial.println("Starting LoRa failed!");
-        while (1);
+    if (!LoRa.begin(433E6))
+    {
+        digitalWrite(GreenPin, HIGH);
+        digitalWrite(RedPin, HIGH);
+        delay(1000);
+        digitalWrite(GreenPin, LOW);
+        digitalWrite(RedPin, LOW);
+        while (1)
+            ;
     }
-    Serial.println("LoRa initialized.");
+    digitalWrite(BluePin, HIGH);
+    delay(1000);
+    digitalWrite(BluePin, LOW);
 
     xTaskCreate(fetchTask, "Fetch Task", 8192, NULL, 1, &fetchTaskHandle);
     xTaskCreate(serialListenTask, "Serial Listen Task", 4096, NULL, 1, &serialListenTaskHandle);

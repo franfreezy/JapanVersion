@@ -17,9 +17,10 @@
 #define LORA_TX 21
 #define LED1_PIN 25
 #define LED2_PIN 27
+#define LED3_PIN 14
 #define I2C_SDA 12
 #define I2C_SCL 13
-#define SIGNAL_PIN 14
+#define SIGNAL_PIN 16
 
 const int LORA_PACKET_SIZE = 240;
 const int I2C_ADDRESS = 8;
@@ -27,65 +28,63 @@ SoftwareSerial LoRaSerial(LORA_RX, LORA_TX);
 QueueHandle_t sensorQueue;
 volatile bool imageTransmissionInProgress = false;
 
-String encryptData(const String& data) {
-    String encrypted = "";
-    int shift = 3;
+String encryptData(const String &data)
+{
+  String encrypted = "";
+  int shift = 3;
 
-    for (int i = 0; i < data.length(); i++) {
-        char c = data[i];
-        if (isalpha(c)) {
-            char base = islower(c) ? 'a' : 'A';
-            c = (c - base + shift) % 26 + base;
-        }
-        encrypted += c;
+  for (int i = 0; i < data.length(); i++)
+  {
+    char c = data[i];
+    if (isalpha(c))
+    {
+      char base = islower(c) ? 'a' : 'A';
+      c = (c - base + shift) % 26 + base;
     }
+    encrypted += c;
+  }
 
-    return encrypted;
+  return encrypted;
 }
 
 void imageTransmissionTask(void *pvParameters);
 
-void commandTask(void *pvParameters) {
+void commandTask(void *pvParameters)
+{
   char command[10];
   int index = 0;
 
-  LoRaSerial.begin(9600);
+  
 
-  while (true) {
-    if (imageTransmissionInProgress) {
+  while (true)
+  {
+    if (imageTransmissionInProgress)
+    {
       vTaskDelay(100 / portTICK_PERIOD_MS);
       continue;
     }
 
-    if (LoRaSerial.available()) {
+    while (LoRaSerial.available())
+    {
       digitalWrite(LED1_PIN, HIGH);
-      char c = LoRaSerial.read();
-      if (c == '\n') {
-        command[index] = '\0';
-        index = 0;
+      String command = LoRaSerial.readStringUntil('~');
+      Serial.print(command);
+      
 
-        Wire.beginTransmission(I2C_ADDRESS);
-        Wire.write(command);
-        Wire.endTransmission();
         digitalWrite(LED1_PIN, LOW);
 
         digitalWrite(SIGNAL_PIN, HIGH);
         delay(100);
         digitalWrite(SIGNAL_PIN, LOW);
 
-        if (strcmp(command, "SI") == 0) {
-          imageTransmissionInProgress = true;
-          xTaskCreate(imageTransmissionTask, "Image Transmission Task", 8192, NULL, 1, NULL);
-        }
-      } else {
-        command[index++] = c;
-      }
+        
     }
     vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
-void processAndSendData(const String& messageBuffer) {
+void processAndSendData(const String &messageBuffer)
+{
   String message = "agrix" + encryptData(messageBuffer);
   LoRa.beginPacket();
   LoRa.print(message);
@@ -94,27 +93,34 @@ void processAndSendData(const String& messageBuffer) {
   Serial.println(message);
 }
 
-void handleI2CReceive(int bytesReceived) {
+void handleI2CReceive(int bytesReceived)
+{
   static String messageBuffer = "";
   char c;
 
-  while (Wire.available()) {
+  while (Wire.available())
+  {
     c = Wire.read();
 
-    if (c != '-' && c != ' ' && c != '\n' && c != '\r' && c != '\t') {
+    if (c != '-' && c != ' ' && c != '\n' && c != '\r' && c != '\t')
+    {
       messageBuffer += c;
     }
 
-    if (c == '}') {
+    if (c == '}')
+    {
       processAndSendData(messageBuffer);
       messageBuffer = "";
     }
   }
 }
 
-void telemetryTask(void *pvParameters) {
-  while (true) {
-    if (imageTransmissionInProgress) {
+void telemetryTask(void *pvParameters)
+{
+  while (true)
+  {
+    if (imageTransmissionInProgress)
+    {
       vTaskDelay(100 / portTICK_PERIOD_MS);
       continue;
     }
@@ -122,32 +128,41 @@ void telemetryTask(void *pvParameters) {
   }
 }
 
-void groundSourceTask(void *pvParameters) {
+void groundSourceTask(void *pvParameters)
+{
   char groundData[100];
   int index = 0;
 
-  while (true) {
-    if (imageTransmissionInProgress) {
+  while (true)
+  {
+    if (imageTransmissionInProgress)
+    {
       vTaskDelay(100 / portTICK_PERIOD_MS);
       continue;
     }
 
-    if (LoRaSerial.available()) {
+    if (LoRaSerial.available())
+    {
       char c = LoRaSerial.read();
-      if (c == '#') {
+      if (c == '#')
+      {
         groundData[index] = '\0';
         index = 0;
 
-        if (xQueueSend(sensorQueue, &groundData, portMAX_DELAY) != pdPASS) {
+        if (xQueueSend(sensorQueue, &groundData, portMAX_DELAY) != pdPASS)
+        {
           Serial.println("Failed to send data to sensor queue");
         }
-      } else {
+      }
+      else
+      {
         groundData[index++] = c;
       }
     }
 
     char sensorData[100];
-    if (xQueueReceive(sensorQueue, &sensorData, portMAX_DELAY) == pdPASS) {
+    if (xQueueReceive(sensorQueue, &sensorData, portMAX_DELAY) == pdPASS)
+    {
       String message = "ground" + encryptData(String(sensorData));
       LoRa.beginPacket();
       LoRa.print(message);
@@ -160,15 +175,18 @@ void groundSourceTask(void *pvParameters) {
   }
 }
 
-void imageTransmissionTask(void *pvParameters) {
-  if (!SD.exists("/DCIM/Camera/IMG_20230103_214227_442.jpg")) {
+void imageTransmissionTask(void *pvParameters)
+{
+  if (!SD.exists("/DCIM/Camera/IMG_20230103_214227_442.jpg"))
+  {
     Serial.println("File /DCIM/Camera/IMG_20230103_214227_442.jpg does not exist");
     imageTransmissionInProgress = false;
     vTaskDelete(NULL);
   }
 
   File file = SD.open("/DCIM/Camera/IMG_20230103_214227_442.jpg");
-  if (!file) {
+  if (!file)
+  {
     Serial.println("Failed to open file for reading");
     imageTransmissionInProgress = false;
     vTaskDelete(NULL);
@@ -178,13 +196,16 @@ void imageTransmissionTask(void *pvParameters) {
   size_t totalSize = file.size();
   size_t bytesSent = 0;
 
-  while (file.available()) {
+  while (file.available())
+  {
     uint8_t buffer[LORA_PACKET_SIZE];
     int bytesRead = file.read(buffer, LORA_PACKET_SIZE);
 
     String hexString = "image";
-    for (int i = 0; i < bytesRead; i++) {
-      if (buffer[i] < 16) hexString += "0";
+    for (int i = 0; i < bytesRead; i++)
+    {
+      if (buffer[i] < 16)
+        hexString += "0";
       hexString += String(buffer[i], HEX);
     }
 
@@ -206,33 +227,70 @@ void imageTransmissionTask(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
-void setup() {
+
+void setup()
+{
+  // initialize the serial port
   Serial.begin(115200);
+
+  LoRaSerial.begin(9600);
+
+  // initialize the pins
+  pinMode(LED1_PIN, OUTPUT);
+  pinMode(LED2_PIN, OUTPUT);
+  pinMode(LED3_PIN, OUTPUT);
+  pinMode(SIGNAL_PIN, OUTPUT);
+
+  // initialize the I2C bus
   Wire.setPins(I2C_SDA, I2C_SCL);
   Wire.begin(I2C_ADDRESS);
   Wire.onReceive(handleI2CReceive);
-  while (!Serial);
+  while (!Serial)
+    ;
 
-  if (!SD.begin(SD_CS)) {
-    Serial.println("SD Card Mount Failed");
+  if (!SD.begin(SD_CS))
+  {
+    digitalWrite(LED1_PIN, HIGH);
+    digitalWrite(LED2_PIN, HIGH);
+    delay(1000);
+    digitalWrite(LED1_PIN, LOW);
+    digitalWrite(LED2_PIN, LOW);
     return;
   }
-  Serial.println("SD Card initialized.");
+  digitalWrite(LED1_PIN, HIGH);
+  delay(1000);
 
   LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO0);
-  if (!LoRa.begin(433E6)) {
-    Serial.println("Starting LoRa failed!");
+  if (!LoRa.begin(433E6))
+  {
+    digitalWrite(LED1_PIN, HIGH);
+    digitalWrite(LED3_PIN, HIGH);
+    delay(1000);
+    digitalWrite(LED1_PIN, LOW);
+    digitalWrite(LED3_PIN, LOW);
     return;
   }
-  Serial.println("LoRa initialized.");
+  digitalWrite(LED1_PIN, LOW);
+  digitalWrite(LED2_PIN, HIGH);
+  delay(1000);
 
-  pinMode(LED1_PIN, OUTPUT);
-  pinMode(LED2_PIN, OUTPUT);
-  pinMode(SIGNAL_PIN, OUTPUT);
+  digitalWrite(LED2_PIN, LOW);
 
+  //blink thrice to indicate unsuccessful queue initialization
   sensorQueue = xQueueCreate(10, sizeof(char[100]));
-  if (sensorQueue == NULL) {
-    Serial.println("Failed to create sensor queue");
+  if (sensorQueue == NULL)
+  {
+    digitalWrite(LED1_PIN, HIGH);
+    delay(300);
+    digitalWrite(LED1_PIN, LOW);  
+    delay(300);
+    digitalWrite(LED1_PIN, HIGH);
+    delay(300);
+    digitalWrite(LED1_PIN, LOW);  
+    delay(300);
+    digitalWrite(LED1_PIN, HIGH);
+    delay(300);
+    digitalWrite(LED1_PIN, LOW);  
     return;
   }
 
@@ -241,5 +299,6 @@ void setup() {
   xTaskCreate(groundSourceTask, "Ground Source Task", 4096, NULL, 1, NULL);
 }
 
-void loop() {
+void loop()
+{
 }
